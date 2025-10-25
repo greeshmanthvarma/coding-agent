@@ -51,7 +51,8 @@ async def github_callback(code: str, db: db_dependency):
             user = UserModel(
                 username=user_data["login"],
                 github_id=user_data["id"],
-                avatar_url=user_data["avatar_url"]
+                avatar_url=user_data["avatar_url"],
+                github_token=access_token 
             )
             db.add(user)
             db.commit()
@@ -59,6 +60,7 @@ async def github_callback(code: str, db: db_dependency):
         else:
             user.username = user_data["login"]
             user.avatar_url = user_data["avatar_url"]
+            user.github_token = access_token 
             db.commit()
         
         jwt_token = jwt.encode({"user_id": user.id}, os.getenv("JWT_SECRET"), algorithm="HS256")

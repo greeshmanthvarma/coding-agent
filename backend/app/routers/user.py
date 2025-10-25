@@ -1,18 +1,61 @@
-from app.database import db_dependency
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.models import User as UserModel, Session as SessionModel
+import requests
 from pydantic import BaseModel
-from app.models import User as UserModel
+from app.middleware.auth import get_current_user
+import uuid
+import git
+from datetime import datetime, timezone, timedelta
+from app.database import db_dependency
 user_router=APIRouter(prefix="/user",tags=["user"])
 
-class User(BaseModel):
-    username:str
-    github_id:int
-    avatar_url:str
+class Repo(BaseModel):
+    id: int
+    name: str
+    full_name: str
+    private: bool
 
-@user_router.post('/create')
-def create_user(user:User,db:db_dependency):
-    new_user=UserModel(username=user.username,email=user.email,avatar_url=user.avatar_url)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+@user_router.get("/repos")
+async def get_user_repos(current_user: UserModel = Depends(get_current_user)):
+    try:
+        repos=requests.get(
+            "https://api.github.com/user/repos",
+            headers={"Authorization":f"Bearer {current_user.github_token}"}
+        )
+        repos=repos.json()
+        repos_list=[
+            Repo(
+                id=repo["id"], 
+                name=repo["name"],
+                full_name=repo["full_name"],
+                private=repo["private"]
+            )for repo in repos
+        ]
+        return {"repos":repos_list}
+    except Exception as e:
+        return {"error":f"Failed to get user repos: {str(e)}"}
+
+@user_router.post("/repos/clone")
+async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_user), db: db_dependency = None):
+    try:
+        session_id=str(uuid.uuid4())
+        clone_path=f"/tmp/repo_{session_id}"
+        repo_url=f"https://github.com/{repo.full_name}.git"
+        git.Repo.clone_from(repo_url, clone_path)
+        session=SessionModel(
+            id=session_id,
+            user_id=current_user.id,
+            repo_id=repo.id,
+            repo_name=repo.name,
+            repo_url=repo_url,
+            clone_path=clone_path,
+            created_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+        return {"message": "Repo cloned successfully", "session_id": session_id}
+    except Exception as e:
+        return {"error": f"Failed to clone repo: {str(e)}"}

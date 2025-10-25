@@ -1,12 +1,29 @@
-from sqlalchemy import Column, Integer, String, Boolean, Sequence
+from sqlalchemy import Column, Integer, String, DateTime
 from app.database import Base
-
-
+from datetime import datetime, timezone
+from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey
 
 class User(Base):
     __tablename__ = "users"
-    id= Column(Integer,primary_key=True,autoincrement=True)
-    github_id=Column(Integer,unique=True)
-    username=Column(String,unique=True)
-    avatar_url=Column(String)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    github_id = Column(Integer, unique=True)
+    username = Column(String, unique=True)
+    avatar_url = Column(String)
+    github_token = Column(String)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
+    sessions = relationship("Session", back_populates="user")
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+    id= Column(String, primary_key=True)
+    user_id= Column(Integer, ForeignKey("users.id"))
+    repo_id= Column(Integer)
+    repo_name= Column(String)
+    repo_url= Column(String)
+    clone_path= Column(String)
+    created_at= Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at= Column(DateTime)
+    user= relationship("User", back_populates="sessions")
