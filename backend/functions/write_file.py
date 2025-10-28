@@ -21,7 +21,7 @@ def write_file(working_directory, file_path,content):
 
         return f'Successfully wrote to "{file_path}" ({len(content)}) characters'
     except Exception as e:
-        return f"Failes to write to file:{file_path}, {e}"
+        return f"Failed to write to file: {file_path}, {e}"
 
 schema_write_file = types.FunctionDeclaration(
     name="write_file",

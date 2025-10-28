@@ -23,7 +23,7 @@ def get_file_content(working_directory, file_path):
         return file_content_string
     
     except Exception as e:
-        return f"Exception reading file:[e]"
+        return f"Exception reading file: {e}"
         
 schema_get_file_content = types.FunctionDeclaration(
     name="get_file_content",
