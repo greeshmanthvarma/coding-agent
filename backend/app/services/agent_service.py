@@ -6,6 +6,8 @@ from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_file_content
 from functions.write_file import schema_write_file
 from functions.run_python_file import schema_run_python_file
+from functions.get_file_overview import schema_get_file_overview
+from functions.search_in_file import schema_search_in_file
 from call_function import call_function
 from app.models import Session as SessionModel
 from app.database import db_dependency
@@ -64,6 +66,8 @@ class GeminiAgentService:
                 schema_get_file_content,
                 schema_write_file,
                 schema_run_python_file,
+                schema_get_file_overview,
+                schema_search_in_file,
             ]
         )
 
