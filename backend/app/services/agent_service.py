@@ -8,7 +8,7 @@ from functions.write_file import schema_write_file
 from functions.run_python_file import schema_run_python_file
 from functions.get_file_overview import schema_get_file_overview
 from functions.search_in_file import schema_search_in_file
-from call_function import call_function
+from app.services.call_function import call_function
 from app.models import Session as SessionModel
 from app.database import db_dependency
 from fastapi import HTTPException
@@ -19,7 +19,7 @@ class GeminiAgentService:
         load_dotenv()
         self.api_key = os.environ.get("GEMINI_API_KEY")
         self.client = genai.Client(api_key=self.api_key)
-    
+        
     async def execute(self, prompt: str, session_id: str, db: db_dependency=None):
         
         session = db.query(SessionModel).filter(SessionModel.id == session_id).first()

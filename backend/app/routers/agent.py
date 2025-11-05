@@ -38,7 +38,7 @@ async def stream_agent_output( websocket: WebSocket,session_id: str, db: db_depe
 
     except Exception as e:
         await websocket.send_json({
-            type: "error",
+            "type": "error",
             "message": f"An error occurred: {str(e)}"
         })
         await websocket.close(code=1000, reason="WebSocket disconnected") 
