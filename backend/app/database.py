@@ -6,6 +6,7 @@ import os
 from typing import Annotated
 from sqlalchemy.orm import Session
 from fastapi import Depends
+import redis
 
 load_dotenv()
 
@@ -22,4 +23,12 @@ def get_db():
     finally:
         db.close()
 
+def get_redis():
+    r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+    try:
+        yield r
+    finally:
+        r.close()
+
+redis_dependency = Annotated[redis.Redis, Depends(get_redis)]
 db_dependency = Annotated[Session, Depends(get_db)]

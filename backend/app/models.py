@@ -27,3 +27,14 @@ class Session(Base):
     created_at= Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at= Column(DateTime)
     user= relationship("User", back_populates="sessions")
+    messages = relationship("Message", back_populates="session")
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("sessions.id"))
+    message = Column(String)
+    sender = Column(String)
+    sequence= Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    session = relationship("Session", back_populates="messages")
