@@ -29,49 +29,71 @@ class GeminiAgentService:
         self.api_key = os.environ.get("GEMINI_API_KEY")
         self.client = genai.Client(api_key=self.api_key)
 
-    def _load_messages_from_db(self, session_id: str, db: Session):
-        """Helper to load messages from PostgreSQL and convert to Gemini format."""
-        db_messages = db.query(MessageModel).filter(
-            MessageModel.session_id == session_id
-        ).order_by(MessageModel.sequence.asc()).all()
-        
-        gemini_messages = []
-        for db_message in db_messages:
-            gemini_messages.append(
-                types.Content(
-                    role=db_message.sender,
-                    parts=[types.Part(text=db_message.message)]
-                )
-            )
-        return gemini_messages
-
-    def load_messages(self, session_id: str, redis_client: redis.Redis, db: Session):
+    def _load_raw_messages(self, session_id: str, redis_client: redis.Redis, db: Session):
         """
-        Load previous messages from Redis cache first, if not found, load from PostgreSQL.
-        Returns list of Gemini types.Content objects.
+        Internal helper: Load raw messages from cache or DB (cache-first).
+        Returns list of dicts with 'role', 'content', 'sequence', 'created_at'.
         """
+        # Try Redis cache first
         try:
             query = Query(f"@session_id:{{{session_id}}}").sort_by("sequence", asc=True)
             search_result = redis_client.ft("idx:messages").search(query)
             
             if search_result and search_result.docs:
-                gemini_messages = []
+                messages = []
                 for doc in search_result.docs:
                     message_data = json.loads(doc.json) if hasattr(doc, 'json') else doc
-                    gemini_messages.append(
-                        types.Content(
-                            role=message_data.get("sender", "user"),
-                            parts=[types.Part(text=message_data.get("message", ""))]
-                        )
-                    )
-                return gemini_messages
+                    messages.append({
+                        "role": message_data.get("sender", "user"),
+                        "content": message_data.get("message", ""),
+                        "sequence": message_data.get("sequence", 0),
+                        "created_at": None  # Redis doesn't store created_at
+                    })
+                return messages
         except Exception:
             pass
         
+        # Fallback to PostgreSQL
         try:
-            return self._load_messages_from_db(session_id, db)
+            db_messages = db.query(MessageModel).filter(
+                MessageModel.session_id == session_id
+            ).order_by(MessageModel.sequence.asc()).all()
+            
+            messages = []
+            for db_message in db_messages:
+                messages.append({
+                    "role": db_message.sender,
+                    "content": db_message.message,
+                    "sequence": db_message.sequence,
+                    "created_at": db_message.created_at.isoformat() if db_message.created_at else None
+                })
+            return messages
         except Exception:
             return []
+
+    def load_messages(self, session_id: str, redis_client: redis.Redis, db: Session):
+        """
+        Load previous messages from Redis cache first, if not found, load from PostgreSQL.
+        Returns list of Gemini types.Content objects (for agent execution).
+        """
+        raw_messages = self._load_raw_messages(session_id, redis_client, db)
+        
+        gemini_messages = []
+        for msg in raw_messages:
+            gemini_messages.append(
+                types.Content(
+                    role=msg["role"],
+                    parts=[types.Part(text=msg["content"])]
+                )
+            )
+        return gemini_messages
+    
+    def get_messages_for_api(self, session_id: str, redis_client: redis.Redis, db: Session):
+        """
+        Get messages in frontend-friendly format (cache-first, then DB).
+        Returns list of dicts with 'role', 'content', 'sequence', 'created_at'.
+        """
+        return self._load_raw_messages(session_id, redis_client, db)
 
     def _get_next_sequence(self, session_id: str, redis_client: redis.Redis, db: Session):
         """Get the next sequence number for a session from Redis or DB."""
