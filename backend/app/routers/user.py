@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.models import User as UserModel, Session as SessionModel
 import requests
 from pydantic import BaseModel
@@ -22,6 +22,7 @@ async def get_user_repos(current_user: UserModel = Depends(get_current_user)):
             "https://api.github.com/user/repos",
             headers={"Authorization":f"Bearer {current_user.github_token}"}
         )
+        repos.raise_for_status()  # Raise exception for bad status codes
         repos=repos.json()
         repos_list=[
             Repo(
@@ -32,8 +33,10 @@ async def get_user_repos(current_user: UserModel = Depends(get_current_user)):
             )for repo in repos
         ]
         return {"repos":repos_list}
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get user repos: {str(e)}")
     except Exception as e:
-        return {"error":f"Failed to get user repos: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @user_router.post("/repos/clone")
 async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_user), db: db_dependency = None):
@@ -57,5 +60,7 @@ async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_u
         db.refresh(session)
 
         return {"message": "Repo cloned successfully", "session_id": session_id}
+    except git.exc.GitCommandError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clone repo: {str(e)}")
     except Exception as e:
-        return {"error": f"Failed to clone repo: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")

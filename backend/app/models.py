@@ -45,13 +45,13 @@ class Review(Base):
     id = Column(String, primary_key=True)
     session_id = Column(String, ForeignKey("sessions.id"))
     user_id = Column(Integer, ForeignKey("users.id"))
-    prompt = Column(Text)  # User's original prompt
-    changes = Column(Text)  # JSON string of file changes made by agent
-    checkpoint_commit_hash = Column(String)  # Git commit hash before agent made changes (for revert)
-    status = Column(String, default="pending_review")  # pending_review, approved, rejected
+    prompt = Column(Text)  
+    changes = Column(Text)  
+    checkpoint_commit_hash = Column(String)  
+    status = Column(String, default="pending_review")  
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     approved_at = Column(DateTime, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
-    commit_message = Column(String, nullable=True)  # User's commit message if approved
-    branch_name = Column(String, nullable=True)  # Branch name if approved
+    commit_message = Column(String, nullable=True)  
+    branch_name = Column(String, nullable=True)  
     session = relationship("Session", back_populates="reviews")

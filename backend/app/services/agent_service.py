@@ -5,7 +5,7 @@ from google.genai import types
 from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_file_content
 from functions.write_file import schema_write_file
-from functions.run_python_file import schema_run_python_file
+from functions.run_program_file import schema_run_program_file
 from functions.get_file_overview import schema_get_file_overview
 from functions.search_in_file import schema_search_in_file
 from app.services.call_function import call_function
@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 import json
 import uuid
 from redis.commands.json.path import Path
+from app.utils.git_utils import get_current_commit_hash, get_git_status, revert_to_checkpoint, commit_changes, push_changes
+from app.models import Review as ReviewModel
 
 class GeminiAgentService:
     def __init__(self):
@@ -47,7 +49,7 @@ class GeminiAgentService:
                         "role": message_data.get("sender", "user"),
                         "content": message_data.get("message", ""),
                         "sequence": message_data.get("sequence", 0),
-                        "created_at": None  # Redis doesn't store created_at
+                        "created_at": None 
                     })
                 return messages
         except Exception:
@@ -128,7 +130,7 @@ class GeminiAgentService:
                     "message": message.parts[0].text,
                     "sender": message.role,
                     "session_id": session_id,
-                    "sequence": sequence+1
+                    "sequence": sequence
                 }
             )
         except Exception:
@@ -143,7 +145,7 @@ class GeminiAgentService:
                 message=message.parts[0].text,
                 sender=message.role,
                 session_id=session_id,
-                sequence=sequence+1
+                sequence=sequence
             )
             db.add(db_message)
             db.commit()
@@ -160,6 +162,34 @@ class GeminiAgentService:
         working_directory = session.clone_path
         if not os.path.exists(working_directory):
             raise HTTPException(status_code=404, detail="Cloned repository not found")
+
+        checkpoint =get_current_commit_hash(working_directory)
+        if "error" in checkpoint:
+            yield{
+                "type" : "error",
+                "message": f"Error getting current commit hash: {checkpoint.get('error')}"
+            }
+            return
+        
+        checkpoint_commit_hash=checkpoint.get("commit_hash")
+
+        review_id = str(uuid.uuid4())
+        review= ReviewModel(
+            id=review_id,
+            session_id=session_id,
+            user_id=session.user_id,
+            prompt=prompt,
+            changes="",
+            checkpoint_commit_hash=checkpoint_commit_hash,
+            status="pending_review",
+            created_at=datetime.now(timezone.utc),
+            approved_at = None,
+            rejected_at = None,
+            commit_message=None,
+            branch_name=None
+        )
+        db.add(review)
+        db.commit()
 
         yield {
             "type": "agent_started",
@@ -203,7 +233,7 @@ class GeminiAgentService:
                 schema_get_files_info,
                 schema_get_file_content,
                 schema_write_file,
-                schema_run_python_file,
+                schema_run_program_file,
                 schema_get_file_overview,
                 schema_search_in_file,
             ]
@@ -251,7 +281,16 @@ class GeminiAgentService:
                         result = call_function(function_call_part, working_directory)
                         messages.append(result)
                 else:
-                    
+                    changes=get_git_status(working_directory)
+
+                    if changes and "error" not in changes:
+                        changes_json=json.dumps(changes)
+                    else:
+                        changes_json = json.dumps({"error": changes.get("error", "Unknown error")}) if changes else None
+
+                    review.changes=changes_json
+                    db.commit()
+
                     agent_response_text = response.text if response.text else "Task completed"
                     agent_message = types.Content(role="model", parts=[types.Part(text=agent_response_text)])
                     
@@ -260,7 +299,8 @@ class GeminiAgentService:
                         "message": agent_response_text,
                         "function_calls": function_calls,
                         "agent_responses": agent_responses,
-                        "working_directory": working_directory
+                        "working_directory": working_directory,
+                        "review_id": review_id
                     }
                     agent_sequence = user_sequence + 1
                     self.save_message_cache(agent_message, session_id, agent_sequence, redis)
@@ -273,7 +313,8 @@ class GeminiAgentService:
                 "message": "Agent reached maximum iterations",
                 "function_calls": function_calls,
                 "agent_responses": agent_responses,
-                "working_directory": working_directory
+                "working_directory": working_directory,
+                "review_id": review_id
             }
             
         except Exception as e:
@@ -282,6 +323,7 @@ class GeminiAgentService:
                 "message": f"Agent execution failed: {str(e)}",
                 "function_calls": function_calls,
                 "agent_responses": agent_responses,
-                "working_directory": working_directory
+                "working_directory": working_directory,
+                "review_id": review_id
             }
 

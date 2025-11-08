@@ -2,7 +2,7 @@ import os
 import subprocess
 from google.genai import types 
 
-def run_python_file(working_directory:str, file_path:str):
+def run_program_file(working_directory:str, file_path:str):
     abs_working_dir= os.path.abspath(working_directory)
     abs_file_path= os.path.abspath(os.path.join(working_directory, file_path))
 
@@ -32,8 +32,8 @@ def run_python_file(working_directory:str, file_path:str):
         return {"error": f"Error executing {language_type} file: {e}"}
 
 
-schema_run_python_file = types.FunctionDeclaration(
-    name="run_python_file",
+schema_run_program_file = types.FunctionDeclaration(
+    name="run_program_file",
     description="Runs a file with the python3 or node interpreter depending on the file extension.Returns the stdout and stderr of the command.",
     parameters=types.Schema(
         type=types.Type.OBJECT,

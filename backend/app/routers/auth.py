@@ -39,7 +39,7 @@ async def github_callback(code: str, db: db_dependency):
             })
         token_data = response.json()
         if "access_token" not in token_data:
-           return {"error":"Failed to get access token","token_data":token_data}
+           raise HTTPException(status_code=400, detail="Failed to get access token from GitHub")
         access_token=token_data["access_token"]
         user_data=requests.get(
             "https://api.github.com/user",
@@ -85,5 +85,7 @@ async def github_callback(code: str, db: db_dependency):
         )
         
         return response
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": f"Login Failed: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Login Failed: {str(e)}")
