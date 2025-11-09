@@ -1,16 +1,203 @@
-function App() {
+import { Button } from "./components/ui/button"
+import githubIcon from "./assets/brand-github.svg"
+import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, InputGroupText } from "./components/ui/input-group"
+import { PlusIcon, LogOutIcon } from "lucide-react"
+import { ArrowUpIcon } from "lucide-react"
+import { useState, useEffect } from "react"
+export default function App() {
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
+  const [error, setError] = useState(null)
+  const [token, setToken] = useState(null)
+  const [repositories, setRepositories] = useState([])
+  const [showRepositories, setShowRepositories] = useState(false)
+  const [selectedRepository, setSelectedRepository] = useState(null)
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search)
+        const success = urlParams.get('success')
+        
+        if (success === 'true') {
+          // Clean up URL i.e., remove ?success=true from address bar)
+          window.history.replaceState({}, document.title, window.location.pathname)
+          
+          // Verify authentication by calling /api/auth/me
+          const response = await fetch('/api/auth/me', {
+            credentials: 'include' 
+          })
+          
+          if (response.ok) {
+            const userData = await response.json()
+            setIsAuthenticated(true)
+            setUser(userData)
+            setError(null)
+          } else {
+            throw new Error('Authentication failed')
+          }
+        } else {
+          // Check if already authenticated on initial load
+          const response = await fetch('/api/auth/me', {
+            credentials: 'include'
+          })
+          
+          if (response.ok) {
+            const userData = await response.json()
+            setIsAuthenticated(true)
+            setUser(userData)
+            setError(null)
+          } else {
+            // Not authenticated, user needs to log in
+            setIsAuthenticated(false)
+            setUser(null)
+          }
+        }
+      } catch (error) {
+        setError(error.message)
+        setIsAuthenticated(false)
+        setUser(null)
+      }
+    }
+    const getRepositories = async () => {
+      try {
+        const response = await fetch('/api/user/repos', {
+          credentials: 'include'
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          setRepositories(data.repos || [])
+        } else {
+          // Not authenticated or error - that's okay
+          setRepositories([])
+        }
+      } catch (error) {
+        // Silently fail - user might not be authenticated yet
+        setRepositories([])
+      }
+    }
+    
+    checkAuth()
+    getRepositories()
+  }, [])
+
+  function onLogin() {
+    window.location.href = "/api/auth/github"
+    
+  }
+
+  function onAddRepository() {
+    setShowRepositories(!showRepositories)
+  }
+
+  async function onSelectRepository(repository) {
+    try {
+      const response = await fetch('/api/user/repos/clone', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: repository.id,
+          name: repository.name,
+          full_name: repository.full_name,
+          private: repository.private
+        }),
+        credentials: 'include'
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to clone repository')
+      }
+      
+      const data = await response.json()
+      console.log(data)
+      setShowRepositories(false) 
+      setSelectedRepository(repository)
+    } catch (error) {
+      setError(error.message)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">
-          RepoRefine - AI-Powered Code Refinement Platform
-        </h1>
-        <p className="text-lg text-gray-600">
-          Welcome to your AI coding agent workspace
-        </p>
+    <div className="dark min-h-screen bg-background text-foreground">
+      <div className="container flex flex-col mx-auto px-4 py-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-4xl text-foreground mb-4">
+            <span className="italic tracking-tightest">Repo</span><span className="font-bold tracking-tightest">Refine</span>  
+          </h1>
+          {
+            isAuthenticated ? 
+            <Button className="rounded-full">
+            <img src={user.avatar_url} alt="User" className="w-4 h-4" />{user.username}
+            </Button>
+            : 
+            <Button className="rounded-full" onClick={()=>onLogin()}>
+            <img src={githubIcon} alt="GitHub" className="w-4 h-4" />Login with GitHub
+            </Button>
+          }
+         
+        </div>
+        {error && (
+          <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+       
+        <div className="flex justify-end mt-8 flex-1">
+        <InputGroup>
+        <InputGroupTextarea placeholder="Ask, Search or Chat..." />
+        <InputGroupAddon align="block-end" className="flex justify-between items-center gap-2">
+          {
+          selectedRepository ? 
+          <div className="flex items-center gap-2">
+            <span>{selectedRepository.name}</span>
+            <Button variant="outline" className="rounded-full" size="icon-lg" onClick={()=>setSelectedRepository(null)}>
+              Close
+            </Button>
+          </div> : 
+          <div className="flex items-center gap-2">
+          <InputGroupButton
+            variant="outline"
+            className="rounded-full"
+            size="icon-lg"
+            disabled={!isAuthenticated}
+            onClick={()=>onAddRepository()}
+          >
+            <PlusIcon /> 
+            <span>Add Repository</span>
+          </InputGroupButton>
+          <div className="relative w-full border-gray-200">
+          {
+              showRepositories && (
+              <div className="flex flex-col">
+              {
+                repositories.length > 0 ? repositories.map((repository) => (
+                  <div key={repository.id} onClick={()=>onSelectRepository(repository)} className="hover:bg-gray-100 p-2 cursor-pointer">{repository.name}</div>
+                )) : "No repositories found"
+              }
+              </div>
+            )}
+          </div>
+          </div>
+    }
+          <InputGroupButton
+            variant="default"
+            className="rounded-full"
+            size="icon-xs"
+            disabled={!isAuthenticated}
+          >
+            <ArrowUpIcon />
+            <span className="sr-only">Send</span>
+          </InputGroupButton>
+          
+        </InputGroupAddon>
+      </InputGroup>
+        </div>
       </div>
     </div>
   )
 }
 
-export default App

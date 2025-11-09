@@ -81,9 +81,9 @@ async def stream_agent_output(websocket: WebSocket, session_id: str):
 @agent_router.get("/{session_id}/messages")
 async def get_past_messages(
     session_id: str,
-    current_user: UserModel = Depends(get_current_user),
-    redis: redis_dependency = Depends(),
-    db: db_dependency = Depends()
+    db: db_dependency,
+    redis: redis_dependency,
+    current_user: UserModel = Depends(get_current_user)
 ):
     """
     Get all messages for a session (cache-first, then DB).
@@ -110,8 +110,8 @@ async def get_past_messages(
 @agent_router.get("/review/{review_id}")
 async def get_review_details(
     review_id: str, 
-    current_user: UserModel = Depends(get_current_user), 
-    db: db_dependency = Depends()
+    db: db_dependency,
+    current_user: UserModel = Depends(get_current_user)
 ):
     """
     Get details of a review including changes made by agent.
@@ -147,7 +147,12 @@ async def get_review_details(
     return review
 
 @agent_router.post("/review/{review_id}/approve")
-async def approve_review(review_id: str, request: ApproveReviewRequest, current_user: UserModel = Depends(get_current_user), db: db_dependency = Depends()):
+async def approve_review(
+    review_id: str, 
+    request: ApproveReviewRequest, 
+    db: db_dependency,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Approve a review and commit changes to the repository.
     """
@@ -187,7 +192,11 @@ async def approve_review(review_id: str, request: ApproveReviewRequest, current_
         raise HTTPException(status_code=500, detail=f"Error approving review: {str(e)}")
 
 @agent_router.post("/review/{review_id}/reject")
-async def reject_review(review_id:str, current_user: UserModel = Depends(get_current_user), db: db_dependency = Depends()):
+async def reject_review(
+    review_id: str,
+    db: db_dependency,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Reject a review and revert changes to the repository.
     """
@@ -230,7 +239,11 @@ async def reject_review(review_id:str, current_user: UserModel = Depends(get_cur
         raise HTTPException(status_code=500, detail=f"Error rejecting review: {str(e)}")
 
 @agent_router.post("/review/{review_id}/push")
-async def push_review(review_id: str, current_user: UserModel = Depends(get_current_user), db: db_dependency = Depends()):
+async def push_review(
+    review_id: str,
+    db: db_dependency,
+    current_user: UserModel = Depends(get_current_user)
+):
     """
     Push changes to the remote repository.
     Only works if review is approved.

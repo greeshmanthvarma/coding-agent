@@ -6,12 +6,21 @@ import requests
 from app.database import db_dependency
 from app.models import User as UserModel
 import jwt
-from fastapi import HTTPException
-
+from fastapi import HTTPException, Depends
+from app.middleware.auth import get_current_user
 auth_router=APIRouter(prefix="/auth",tags=["auth"])
 
 load_dotenv()
 
+@auth_router.get("/me")
+async def get_current_user_info(current_user: UserModel = Depends(get_current_user)):
+    """Get current authenticated user info."""
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "avatar_url": current_user.avatar_url,
+        "github_id": current_user.github_id
+    }
 
 @auth_router.get("/github")
 async def github_login():
@@ -65,16 +74,11 @@ async def github_callback(code: str, db: db_dependency):
         
         jwt_token = jwt.encode({"user_id": user.id}, os.getenv("JWT_SECRET"), algorithm="HS256")
         
-        response = JSONResponse({
-            "message": "Login Successful", 
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "avatar_url": user.avatar_url,
-                "github_id": user.github_id
-            }
-        })
         
+        frontend_url = "http://localhost:5174"
+        redirect_url = f"{frontend_url}/auth/callback?success=true"
+        
+        response = RedirectResponse(url=redirect_url)
         response.set_cookie(
             key="token",
             value=jwt_token,
