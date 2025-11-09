@@ -1,9 +1,11 @@
 import { Button } from "./components/ui/button"
 import githubIcon from "./assets/brand-github.svg"
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, InputGroupText } from "./components/ui/input-group"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./components/ui/dropdown-menu"
 import { PlusIcon, LogOutIcon } from "lucide-react"
 import { ArrowUpIcon } from "lucide-react"
 import { useState, useEffect } from "react"
+import { AppSidebar } from "./components/app-sidebar"
 export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -69,11 +71,9 @@ export default function App() {
           const data = await response.json()
           setRepositories(data.repos || [])
         } else {
-          // Not authenticated or error - that's okay
           setRepositories([])
         }
       } catch (error) {
-        // Silently fail - user might not be authenticated yet
         setRepositories([])
       }
     }
@@ -84,7 +84,6 @@ export default function App() {
 
   function onLogin() {
     window.location.href = "/api/auth/github"
-    
   }
 
   function onAddRepository() {
@@ -124,6 +123,7 @@ export default function App() {
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <div className="container flex flex-col mx-auto px-4 py-8">
+        
         <div className="flex justify-between items-center">
           <h1 className="text-4xl text-foreground mb-4">
             <span className="italic tracking-tightest">Repo</span><span className="font-bold tracking-tightest">Refine</span>  
@@ -159,30 +159,30 @@ export default function App() {
             </Button>
           </div> : 
           <div className="flex items-center gap-2">
-          <InputGroupButton
-            variant="outline"
-            className="rounded-full"
-            size="icon-lg"
-            disabled={!isAuthenticated}
-            onClick={()=>onAddRepository()}
-          >
-            <PlusIcon /> 
-            <span>Add Repository</span>
-          </InputGroupButton>
-          <div className="relative w-full border-gray-200">
-          {
-              showRepositories && (
-              <div className="flex flex-col">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <InputGroupButton
+                variant="outline"
+                className="rounded-full"
+                size="icon-lg"
+                disabled={!isAuthenticated}
+              >
+                <PlusIcon /> 
+                <span>Add Repository</span>
+              </InputGroupButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
               {
-                repositories.length > 0 ? repositories.map((repository) => (
-                  <div key={repository.id} onClick={()=>onSelectRepository(repository)} className="hover:bg-gray-100 p-2 cursor-pointer">{repository.name}</div>
-                )) : "No repositories found"
+                repositories.map((repository) => (
+                  <DropdownMenuItem key={repository.id} onClick={()=>onSelectRepository(repository)}>
+                    {repository.name}
+                  </DropdownMenuItem>
+                ))
               }
-              </div>
-            )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           </div>
-          </div>
-    }
+         }
           <InputGroupButton
             variant="default"
             className="rounded-full"
@@ -192,7 +192,6 @@ export default function App() {
             <ArrowUpIcon />
             <span className="sr-only">Send</span>
           </InputGroupButton>
-          
         </InputGroupAddon>
       </InputGroup>
         </div>
