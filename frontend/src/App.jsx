@@ -4,8 +4,9 @@ import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, Inpu
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./components/ui/dropdown-menu"
 import { PlusIcon, LogOutIcon, Loader2 } from "lucide-react"
 import { ArrowUpIcon } from "lucide-react"
-import { useState, useEffect } from "react"
-import { AppSidebar } from "./components/app-sidebar"
+import { useState, useEffect, useRef } from "react"
+import { SidebarComponent } from "./components/sidebarComponent"
+import { SidebarProvider, SidebarInset } from "./components/ui/sidebar"
 export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -17,6 +18,7 @@ export default function App() {
   const [selectedRepository, setSelectedRepository] = useState(null)
   const [isCloning, setIsCloning] = useState(false)
   const [clonedSessionId, setClonedSessionId] = useState(null)
+  const inputRef = useRef(null)
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -134,15 +136,16 @@ export default function App() {
       setIsCloning(false)
     }
   }
+  
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground">
-      <div className="container flex flex-col mx-auto px-4 py-8">
-        
-        <div className="flex justify-between items-center">
-          <h1 className="text-4xl text-foreground mb-4">
-            <span className="italic tracking-tightest">Repo</span><span className="font-bold tracking-tightest">Refine</span>  
-          </h1>
+    <SidebarProvider>
+      <SidebarComponent />
+      <SidebarInset>
+        <div className="dark min-h-screen bg-background text-foreground">
+          <div className="container flex flex-col mx-auto px-4 py-8 h-screen">
+            <div className="flex justify-end items-center">
+          
           {
             isAuthenticated ? 
             <Button className="rounded-full">
@@ -153,7 +156,6 @@ export default function App() {
             <img src={githubIcon} alt="GitHub" className="w-4 h-4" />Login with GitHub
             </Button>
           }
-         
         </div>
         {error && (
           <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
@@ -240,9 +242,12 @@ export default function App() {
           </div>
         )}
        
-        <div className="flex justify-end mt-8 flex-1">
+        <div className="flex mt-auto mb-8 w-full max-w-2xl mx-auto pl-8">
         <InputGroup>
-        <InputGroupTextarea placeholder="Ask, Search or Chat..." />
+        <InputGroupTextarea 
+          placeholder="Ask, Search or Chat..." 
+          className="overflow-y-auto max-h-24"
+        />
         <InputGroupAddon align="block-end" className="flex justify-between items-center gap-2">
           {
           selectedRepository && clonedSessionId ? 
@@ -285,6 +290,7 @@ export default function App() {
             className="rounded-full"
             size="icon-xs"
             disabled={!isAuthenticated}
+            onClick={()=>onSendMessage()}
           >
             <ArrowUpIcon />
             <span className="sr-only">Send</span>
@@ -292,8 +298,10 @@ export default function App() {
         </InputGroupAddon>
       </InputGroup>
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
