@@ -7,6 +7,7 @@ import uuid
 import git
 from datetime import datetime, timezone, timedelta
 from app.database import db_dependency
+from app.utils.file_cleanup import cleanup_expired_sessions, cleanup_session
 user_router=APIRouter(prefix="/user",tags=["user"])
 
 class Repo(BaseModel):
@@ -41,6 +42,22 @@ async def get_user_repos(current_user: UserModel = Depends(get_current_user)):
 @user_router.post("/repos/clone")
 async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_user), db: db_dependency = None):
     try:
+        
+        cleanup_expired_sessions(db)
+        
+        
+        MAX_ACTIVE_SESSIONS = 5
+        active_sessions = db.query(SessionModel).filter(
+            SessionModel.user_id == current_user.id,
+            SessionModel.expires_at > datetime.now(timezone.utc)
+        ).count()
+        
+        if active_sessions >= MAX_ACTIVE_SESSIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Maximum number of active repositories ({MAX_ACTIVE_SESSIONS}) reached. Please close a repository to clone another."
+            )
+        
         session_id=str(uuid.uuid4())
         clone_path=f"/tmp/repo_{session_id}"
         repo_url=f"https://github.com/{repo.full_name}.git"
@@ -64,3 +81,48 @@ async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_u
         raise HTTPException(status_code=500, detail=f"Failed to clone repo: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@user_router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    current_user: UserModel = Depends(get_current_user),
+    db: db_dependency = None
+):
+    """
+    Delete a specific session and its cloned repository.
+    Only allows users to delete their own sessions.
+    """
+    try:
+        # Verify session exists and belongs to user
+        session = db.query(SessionModel).filter(
+            SessionModel.id == session_id,
+            SessionModel.user_id == current_user.id
+        ).first()
+        
+        if not session:
+            raise HTTPException(
+                status_code=404, 
+                detail="Session not found or access denied"
+            )
+        
+        # Clean up session and clone directory
+        result = cleanup_session(session_id, db)
+        
+        if "error" in result:
+            raise HTTPException(
+                status_code=500, 
+                detail=result.get("error")
+            )
+        
+        return {
+            "message": "Session deleted successfully",
+            "session_id": session_id,
+            "repo_name": session.repo_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Unexpected error: {str(e)}"
+        )

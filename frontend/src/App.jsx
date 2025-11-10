@@ -2,7 +2,7 @@ import { Button } from "./components/ui/button"
 import githubIcon from "./assets/brand-github.svg"
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, InputGroupText } from "./components/ui/input-group"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./components/ui/dropdown-menu"
-import { PlusIcon, LogOutIcon } from "lucide-react"
+import { PlusIcon, LogOutIcon, Loader2 } from "lucide-react"
 import { ArrowUpIcon } from "lucide-react"
 import { useState, useEffect } from "react"
 import { AppSidebar } from "./components/app-sidebar"
@@ -15,6 +15,8 @@ export default function App() {
   const [repositories, setRepositories] = useState([])
   const [showRepositories, setShowRepositories] = useState(false)
   const [selectedRepository, setSelectedRepository] = useState(null)
+  const [isCloning, setIsCloning] = useState(false)
+  const [clonedSessionId, setClonedSessionId] = useState(null)
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -90,7 +92,18 @@ export default function App() {
     setShowRepositories(!showRepositories)
   }
 
-  async function onSelectRepository(repository) {
+  function onSelectRepository(repository) {
+    
+    setSelectedRepository(repository)
+    setError(null)
+  }
+
+  async function onCloneRepository() {
+    if (!selectedRepository) return
+    
+    setIsCloning(true)
+    setError(null)
+    
     try {
       const response = await fetch('/api/user/repos/clone', {
         method: 'POST',
@@ -98,10 +111,10 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: repository.id,
-          name: repository.name,
-          full_name: repository.full_name,
-          private: repository.private
+          id: selectedRepository.id,
+          name: selectedRepository.name,
+          full_name: selectedRepository.full_name,
+          private: selectedRepository.private
         }),
         credentials: 'include'
       })
@@ -112,11 +125,13 @@ export default function App() {
       }
       
       const data = await response.json()
-      console.log(data)
-      setShowRepositories(false) 
-      setSelectedRepository(repository)
+      setClonedSessionId(data.session_id)
+      setShowRepositories(false)
+      
     } catch (error) {
       setError(error.message)
+    } finally {
+      setIsCloning(false)
     }
   }
 
@@ -145,42 +160,124 @@ export default function App() {
             {error}
           </div>
         )}
+
+        {/* Repository Details Modal/Card - Overlay */}
+        {selectedRepository && !clonedSessionId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="relative z-50 w-full max-w-md mx-4 p-6 bg-card border border-border rounded-lg shadow-lg">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold mb-2">{selectedRepository.name}</h2>
+                  <p className="text-muted-foreground text-sm">{selectedRepository.full_name}</p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    {selectedRepository.private ? '🔒 Private' : '🌐 Public'} Repository
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon-xs"
+                  onClick={() => {
+                    setSelectedRepository(null)
+                    setError(null)
+                  }}
+                >
+                  ✕
+                </Button>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <Button 
+                  onClick={onCloneRepository}
+                  disabled={isCloning}
+                  className="flex-1"
+                >
+                  {isCloning ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Cloning...
+                    </>
+                  ) : (
+                    'Clone Repository'
+                  )}
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedRepository(null)
+                    setError(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success message after cloning - Overlay */}
+        {selectedRepository && clonedSessionId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="relative z-50 w-full max-w-md mx-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-green-400 font-medium">✓ Repository cloned successfully!</p>
+                  <p className="text-green-400/70 text-sm mt-1">
+                    {selectedRepository.name} is ready to use. Session ID: {clonedSessionId}
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon-xs"
+                  onClick={() => {
+                    setSelectedRepository(null)
+                    setClonedSessionId(null)
+                    setError(null)
+                  }}
+                >
+                  ✕
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
        
         <div className="flex justify-end mt-8 flex-1">
         <InputGroup>
         <InputGroupTextarea placeholder="Ask, Search or Chat..." />
         <InputGroupAddon align="block-end" className="flex justify-between items-center gap-2">
           {
-          selectedRepository ? 
+          selectedRepository && clonedSessionId ? 
           <div className="flex items-center gap-2">
-            <span>{selectedRepository.name}</span>
-            <Button variant="outline" className="rounded-full" size="icon-lg" onClick={()=>setSelectedRepository(null)}>
-              Close
+            <span className="text-sm text-muted-foreground">{selectedRepository.name}</span>
+            <Button variant="outline" className="rounded-full" size="icon-xs" onClick={()=>{
+              setSelectedRepository(null)
+              setClonedSessionId(null)
+            }}>
+              ✕
             </Button>
           </div> : 
           <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <InputGroupButton
-                variant="outline"
-                className="rounded-full"
-                size="icon-lg"
-                disabled={!isAuthenticated}
-              >
-                <PlusIcon /> 
-                <span>Add Repository</span>
-              </InputGroupButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {
-                repositories.map((repository) => (
-                  <DropdownMenuItem key={repository.id} onClick={()=>onSelectRepository(repository)}>
-                    {repository.name}
-                  </DropdownMenuItem>
-                ))
-              }
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <InputGroupButton
+                  variant="outline"
+                  className="rounded-full"
+                  size="icon-lg"
+                  disabled={!isAuthenticated}
+                >
+                  <PlusIcon /> 
+                  <span>Add Repository</span>
+                </InputGroupButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {
+                  repositories.map((repository) => (
+                    <DropdownMenuItem key={repository.id} onClick={()=>onSelectRepository(repository)}>
+                      {repository.name}
+                    </DropdownMenuItem>
+                  ))
+                }
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
          }
           <InputGroupButton

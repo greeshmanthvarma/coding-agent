@@ -1,6 +1,5 @@
 import git
 import os
-
 def get_current_commit_hash(working_directory: str):
     """
     Get the current commit hash of the repository.
@@ -85,7 +84,7 @@ def commit_changes(working_directory:str,commit_message:str,branch_name:str=None
 
     try:
         repo=git.Repo(abs_working_dir)
-
+        
         if branch_name:
             if branch_name not in [ref.name for ref in repo.heads]:
                 repo.git.checkout('-b', branch_name)
