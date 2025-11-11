@@ -139,12 +139,18 @@ class GeminiAgentService:
     def save_message_db(self, message: types.Content, session_id: str, sequence: int, db: Session):
         """Save a message to the database."""
         try:
+            
+            session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+            if not session:
+                return 
+            
             message_id = str(uuid.uuid4())
             db_message = MessageModel(
                 id=message_id,
                 message=message.parts[0].text,
                 sender=message.role,
                 session_id=session_id,
+                user_id=session.user_id,  
                 sequence=sequence
             )
             db.add(db_message)

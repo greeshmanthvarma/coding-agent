@@ -33,7 +33,8 @@ class Session(Base):
 class Message(Base):
     __tablename__ = "messages"
     id = Column(String, primary_key=True)
-    session_id = Column(String, ForeignKey("sessions.id"))
+    session_id = Column(String, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     message = Column(String)
     sender = Column(String)
     sequence= Column(Integer, default=0)
@@ -43,7 +44,7 @@ class Message(Base):
 class Review(Base):
     __tablename__ = "reviews"
     id = Column(String, primary_key=True)
-    session_id = Column(String, ForeignKey("sessions.id"))
+    session_id = Column(String, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     prompt = Column(Text)  
     changes = Column(Text)  

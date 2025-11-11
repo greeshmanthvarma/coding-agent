@@ -18,7 +18,11 @@ export default function App() {
   const [selectedRepository, setSelectedRepository] = useState(null)
   const [isCloning, setIsCloning] = useState(false)
   const [clonedSessionId, setClonedSessionId] = useState(null)
-  const inputRef = useRef(null)
+  const [message, setMessage] = useState('')
+  const [websocket, setWebsocket] = useState(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [agentResponse, setAgentResponse] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -143,9 +147,8 @@ export default function App() {
       <SidebarComponent />
       <SidebarInset>
         <div className="dark min-h-screen bg-background text-foreground">
-          <div className="container flex flex-col mx-auto px-4 py-8 h-screen">
+          <div className="container flex flex-col mx-auto px-4 py-6 h-screen">
             <div className="flex justify-end items-center">
-          
           {
             isAuthenticated ? 
             <Button className="rounded-full">
@@ -163,7 +166,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Repository Details Modal/Card - Overlay */}
         {selectedRepository && !clonedSessionId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-6 bg-card border border-border rounded-lg shadow-lg">
@@ -215,7 +217,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Success message after cloning - Overlay */}
         {selectedRepository && clonedSessionId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">

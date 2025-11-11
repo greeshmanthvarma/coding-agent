@@ -11,6 +11,7 @@ load_dotenv()
 def cleanup_expired_sessions(db: Session = None):
     """
     Clean up all expired sessions and their clone directories.
+    Messages and reviews are preserved for chat history (session_id set to NULL).
     Returns count of cleaned sessions.
     """
     if db is None:
@@ -48,6 +49,7 @@ def cleanup_expired_sessions(db: Session = None):
 def cleanup_session(session_id: str, db: Session = None):
     """
     Clean up a specific session and its clone directory.
+    Messages and reviews are preserved for chat history (session_id set to NULL).
     """
     if db is None:
         db = SessionLocal()

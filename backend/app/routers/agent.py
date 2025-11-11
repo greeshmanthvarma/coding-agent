@@ -87,16 +87,27 @@ async def get_past_messages(
 ):
     """
     Get all messages for a session (cache-first, then DB).
+    Works for both active and deleted sessions (preserves chat history).
     Returns messages in chronological order.
     """
-
+    from app.models import Message as MessageModel
+    
+    # Check if session exists and belongs to user, or if messages exist for this session_id
     session = db.query(SessionModel).filter(
         SessionModel.id == session_id,
         SessionModel.user_id == current_user.id
     ).first()
     
+    # If session doesn't exist, verify ownership through messages
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found or access denied")
+        # Check if any messages exist for this session_id and belong to the user
+        message_check = db.query(MessageModel).filter(
+            MessageModel.session_id == session_id,
+            MessageModel.user_id == current_user.id
+        ).first()
+        
+        if not message_check:
+            raise HTTPException(status_code=404, detail="Session not found or access denied")
     
     agent_service = GeminiAgentService()
     messages = agent_service.get_messages_for_api(session_id, redis, db)
