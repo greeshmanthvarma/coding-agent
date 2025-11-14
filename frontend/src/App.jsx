@@ -7,6 +7,8 @@ import { ArrowUpIcon } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { SidebarComponent } from "./components/sidebarComponent"
 import { SidebarProvider, SidebarInset } from "./components/ui/sidebar"
+
+
 export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -23,6 +25,7 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false)
   const [agentResponse, setAgentResponse] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  
   useEffect(() => {
     const checkAuth = async () => {
       try {
