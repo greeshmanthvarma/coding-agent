@@ -8,6 +8,7 @@ from functions.write_file import schema_write_file
 from functions.run_program_file import schema_run_program_file
 from functions.get_file_overview import schema_get_file_overview
 from functions.search_in_file import schema_search_in_file
+from functions.run_command import schema_run_command
 from app.services.call_function import call_function
 from app.models import Session as SessionModel
 from app.models import Message as MessageModel
@@ -242,6 +243,7 @@ class GeminiAgentService:
                 schema_run_program_file,
                 schema_get_file_overview,
                 schema_search_in_file,
+                schema_run_command,
             ]
         )
 
@@ -275,7 +277,12 @@ class GeminiAgentService:
                         if candidate is None or candidate.content is None:
                             continue
                         messages.append(candidate.content)
-                        agent_responses.append(candidate.content.text if candidate.content.text else str(candidate.content))
+                        # Extract text from the first part of the content
+                        if candidate.content.parts and len(candidate.content.parts) > 0:
+                            text = candidate.content.parts[0].text if hasattr(candidate.content.parts[0], 'text') else str(candidate.content.parts[0])
+                        else:
+                            text = str(candidate.content)
+                        agent_responses.append(text)
                 
                 if response.function_calls:
                     for function_call_part in response.function_calls:
@@ -297,7 +304,16 @@ class GeminiAgentService:
                     review.changes=changes_json
                     db.commit()
 
-                    agent_response_text = response.text if response.text else "Task completed"
+                    # Extract text from response candidates
+                    agent_response_text = "Task completed"
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
+                        if candidate and candidate.content and candidate.content.parts and len(candidate.content.parts) > 0:
+                            if hasattr(candidate.content.parts[0], 'text'):
+                                agent_response_text = candidate.content.parts[0].text
+                    elif hasattr(response, 'text') and response.text:
+                        agent_response_text = response.text
+                    
                     agent_message = types.Content(role="model", parts=[types.Part(text=agent_response_text)])
                     
                     yield {

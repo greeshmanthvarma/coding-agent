@@ -77,9 +77,18 @@ async def clone_repo(repo: Repo, current_user: UserModel = Depends(get_current_u
         db.refresh(session)
 
         return {"message": "Repo cloned successfully", "session_id": session_id}
+    except HTTPException:
+        # Re-raise HTTPExceptions (like the 400 for max sessions) as-is
+        raise
     except git.exc.GitCommandError as e:
+        import traceback
+        print(f"Git clone error: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to clone repo: {str(e)}")
     except Exception as e:
+        import traceback
+        print(f"Unexpected error in clone_repo: {type(e).__name__}: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @user_router.delete("/sessions/{session_id}")

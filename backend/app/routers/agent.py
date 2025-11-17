@@ -24,25 +24,46 @@ agent_router=APIRouter(prefix="/agent",tags=["agent"])
 async def stream_agent_output(websocket: WebSocket, session_id: str):
     """
     Stream agent output to the client.
-    Requires JWT token in query parameter: ?token=...
+    Requires JWT token in cookie (sent automatically with WebSocket connection).
     """
     await websocket.accept()
+    print(f"WebSocket accepted for session: {session_id}")
     
     from app.database import get_db, get_redis
     
-    db = next(get_db())
-    redis = next(get_redis())
+    db = None
+    redis = None
     
     try:
-        token = websocket.query_params.get("token")
+        db = next(get_db())
+        print(f"Database connection established")
+        
+        try:
+            redis = next(get_redis())
+            print(f"Redis connection established")
+        except Exception as redis_error:
+            print(f"Warning: Redis connection failed: {redis_error}")
+            # Continue without Redis - app will use PostgreSQL only
+            redis = None
+        
+        # Try to get token from cookies first, then fall back to query param
+        token = None
+        if websocket.cookies and "token" in websocket.cookies:
+            token = websocket.cookies.get("token")
+        else:
+            token = websocket.query_params.get("token")
+        
         if not token:
+            print("Error: No token provided")
             await websocket.close(code=1008, reason="Authentication token required")
             return
         
         try:
             from app.middleware.auth import get_user_from_token
             current_user = get_user_from_token(token, db)
+            print(f"User authenticated: {current_user.id}")
         except HTTPException as e:
+            print(f"Authentication failed: {e.detail}")
             await websocket.close(code=1008, reason=e.detail)
             return
         
@@ -51,32 +72,119 @@ async def stream_agent_output(websocket: WebSocket, session_id: str):
             SessionModel.user_id == current_user.id
         ).first()
         if not session:
+            print(f"Session not found: {session_id}")
             await websocket.close(code=1008, reason="Session not found or access denied")
             return
         
-        data=await websocket.receive_text()
-        request_data=json.loads(data)
-        prompt=request_data.get("prompt")
-
-        if not prompt:
-            await websocket.close(code=1008, reason="Prompt is required")
-            return
+        print(f"Session validated: {session_id}")
+        
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "message": "WebSocket connection established. Ready to receive messages."
+        })
+        print("Connection confirmation sent, waiting for messages...")
         
         agent_service=GeminiAgentService()
-        async for update in agent_service.execute(prompt, session_id, db=db, redis=redis):
-            await websocket.send_json(update)
         
-    except WebSocketDisconnect:
-        await websocket.close(code=1000, reason="WebSocket disconnected")
+        # Keep connection open and handle multiple messages
+        while True:
+            try:
+                # Wait for client to send a message
+                data = await websocket.receive_text()
+                print(f"Message received: {data[:100]}...")
+                request_data = json.loads(data)
+                prompt = request_data.get("prompt")
+
+                if not prompt:
+                    await websocket.send_json({
+                        "type": "error",
+                        "status": "error",
+                        "message": "Prompt is required"
+                    })
+                    continue  # Continue waiting for next message instead of closing
+                
+                print(f"Starting agent execution for prompt: {prompt[:50]}...")
+                try:
+                    update_count = 0
+                    async for update in agent_service.execute(prompt, session_id, db=db, redis=redis):
+                        update_count += 1
+                        print(f"Sending update #{update_count}: {update.get('type', 'unknown')} - {update.get('status', 'no status')}")
+                        try:
+                            await websocket.send_json(update)
+                        except (WebSocketDisconnect, RuntimeError) as send_error:
+                            print(f"Error sending update to client: {send_error}")
+                            return  # Client disconnected, exit loop
+                    print(f"Agent execution completed. Total updates sent: {update_count}")
+                except HTTPException as http_error:
+                    print(f"HTTPException in agent execution: {http_error.detail}")
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "status": "error",
+                            "message": http_error.detail
+                        })
+                    except (WebSocketDisconnect, RuntimeError):
+                        return  # Client disconnected, exit loop
+                except Exception as agent_error:
+                    print(f"Exception in agent execution: {type(agent_error).__name__}: {str(agent_error)}")
+                    import traceback
+                    traceback.print_exc()
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "status": "error",
+                            "message": f"Agent execution failed: {str(agent_error)}"
+                        })
+                    except (WebSocketDisconnect, RuntimeError):
+                        return  # Client disconnected, exit loop
+                        
+            except WebSocketDisconnect:
+                # Client disconnected normally
+                print("Client disconnected")
+                return
+            except json.JSONDecodeError as json_error:
+                print(f"Invalid JSON received: {json_error}")
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "status": "error",
+                        "message": "Invalid JSON format"
+                    })
+                except (WebSocketDisconnect, RuntimeError):
+                    return
+            except Exception as receive_error:
+                print(f"Error receiving message: {type(receive_error).__name__}: {str(receive_error)}")
+                import traceback
+                traceback.print_exc()
+                return  # Exit on unexpected errors
+        
+    except WebSocketDisconnect as e:
+        # Client disconnected, no need to close - connection already closed
+        print(f"Client disconnected: {e}")
+        pass
     except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": f"An error occurred: {str(e)}"
-        })
-        await websocket.close(code=1000, reason="WebSocket disconnected")
+        print(f"Error in WebSocket handler: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        try:
+            # Try to send error message if connection is still open, but don't close
+            await websocket.send_json({
+                "type": "error",
+                "status": "error",
+                "message": f"An error occurred: {str(e)}"
+            })
+            # Don't close - keep connection open for more messages
+        except (WebSocketDisconnect, RuntimeError):
+            # Connection already closed, ignore
+            pass
     finally:
-        db.close()
-        redis.close()
+        # Only close DB/Redis connections, not the WebSocket
+        if db:
+            db.close()
+        if redis:
+            redis.close()
+        print(f"WebSocket handler ended for session: {session_id}")
 
 @agent_router.get("/{session_id}/messages")
 async def get_past_messages(

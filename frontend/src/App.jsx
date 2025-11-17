@@ -1,13 +1,13 @@
 import { Button } from "./components/ui/button"
 import githubIcon from "./assets/brand-github.svg"
-import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, InputGroupText } from "./components/ui/input-group"
+import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton } from "./components/ui/input-group"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./components/ui/dropdown-menu"
-import { PlusIcon, LogOutIcon, Loader2 } from "lucide-react"
+import { PlusIcon, Loader2 } from "lucide-react"
 import { ArrowUpIcon } from "lucide-react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { SidebarComponent } from "./components/sidebarComponent"
 import { SidebarProvider, SidebarInset } from "./components/ui/sidebar"
-
+import { useWebsocket } from "./hooks/useWebsocket"
 
 export default function App() {
 
@@ -21,11 +21,24 @@ export default function App() {
   const [isCloning, setIsCloning] = useState(false)
   const [clonedSessionId, setClonedSessionId] = useState(null)
   const [message, setMessage] = useState('')
-  const [websocket, setWebsocket] = useState(null)
-  const [isConnected, setIsConnected] = useState(false)
   const [agentResponse, setAgentResponse] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
-  
+  const [agentResponses, setAgentResponses] = useState([])
+  const [chatHistory, setChatHistory] = useState([])
+
+  const { sendMessage, lastMessage, isConnected, readyState } = useWebsocket(clonedSessionId, token)
+
+  // Debug: Log button state
+  useEffect(() => {
+    console.log('Send button state:', {
+      isAuthenticated,
+      isConnected,
+      hasMessage: !!message.trim(),
+      readyState,
+      clonedSessionId,
+      disabled: !isAuthenticated || !isConnected || !message.trim()
+    })
+  }, [isAuthenticated, isConnected, message, readyState, clonedSessionId])
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -46,6 +59,10 @@ export default function App() {
             setIsAuthenticated(true)
             setUser(userData)
             setError(null)
+            
+            if (userData.token) {
+              setToken(userData.token)
+            }
           } else {
             throw new Error('Authentication failed')
           }
@@ -60,16 +77,22 @@ export default function App() {
             setIsAuthenticated(true)
             setUser(userData)
             setError(null)
+            
+            if (userData.token) {
+              setToken(userData.token)
+            }
           } else {
             // Not authenticated, user needs to log in
             setIsAuthenticated(false)
             setUser(null)
+            setToken(null)
           }
         }
       } catch (error) {
         setError(error.message)
         setIsAuthenticated(false)
         setUser(null)
+        setToken(null)
       }
     }
     const getRepositories = async () => {
@@ -93,6 +116,70 @@ export default function App() {
     getRepositories()
   }, [])
 
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (lastMessage) {
+      try {
+        const data = JSON.parse(lastMessage.data)
+        console.log('Received WebSocket message:', data)
+        
+        if (data.type === 'connected') {
+          // Connection confirmed - do nothing, just log
+          console.log('WebSocket connected:', data.message)
+        } else if (data.type === 'agent_started') {
+          // Agent started processing - show loading state
+          setAgentResponse('Processing...')
+          setAgentResponses([])
+        } else if (data.status === 'completed') {
+          // Agent finished successfully
+          let fullResponse = ''
+          if (data.agent_responses && data.agent_responses.length > 0) {
+            // Use agent_responses array - join them for display
+            fullResponse = data.agent_responses.join('\n\n')
+            setAgentResponses(data.agent_responses)
+            setAgentResponse(fullResponse)
+          } else if (data.message) {
+            // Fallback to message if no agent_responses
+            fullResponse = data.message
+            setAgentResponses([])
+            setAgentResponse(data.message)
+          } else {
+            // No response content
+            setAgentResponses([])
+            setAgentResponse('')
+          }
+          // Add agent response to chat history
+          if (fullResponse) {
+            setChatHistory(prev => [...prev, { role: 'assistant', content: fullResponse }])
+          }
+        } else if (data.status === 'error') {
+          // Agent error
+          setError(data.message || 'An error occurred')
+          if (data.agent_responses && data.agent_responses.length > 0) {
+            setAgentResponses(data.agent_responses)
+            setAgentResponse(data.agent_responses.join('\n\n'))
+          }
+        } else if (data.status === 'max_iterations_reached') {
+          // Max iterations reached
+          setError('Agent reached maximum iterations')
+          if (data.agent_responses && data.agent_responses.length > 0) {
+            setAgentResponses(data.agent_responses)
+            setAgentResponse(data.agent_responses.join('\n\n'))
+          }
+        } else if (data.agent_responses && data.agent_responses.length > 0) {
+          // Update with latest responses
+          setAgentResponses(data.agent_responses)
+          setAgentResponse(data.agent_responses.join('\n\n'))
+        } else if (data.message) {
+          // Generic message
+          setAgentResponse(data.message)
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error)
+      }
+    }
+  }, [lastMessage])
+  
   function onLogin() {
     window.location.href = "/api/auth/github"
   }
@@ -144,6 +231,50 @@ export default function App() {
     }
   }
   
+  function onSendMessage() {
+    console.log('onSendMessage called:', { 
+      message: message.trim(), 
+      isConnected, 
+      clonedSessionId,
+      readyState 
+    })
+    
+    if (!message.trim()) {
+      setError('Please enter a message')
+      return
+    }
+    
+    if (!isConnected) {
+      setError('Not connected to agent. Please wait...')
+      return
+    }
+    
+    if (!clonedSessionId) {
+      setError('No repository selected')
+      return
+    }
+
+    try {
+      const userMessage = message.trim()
+      
+      // Add user message to chat history
+      setChatHistory(prev => [...prev, { role: 'user', content: userMessage }])
+      
+      // Clear previous response when sending a new message
+      setAgentResponse('')
+      setAgentResponses([])
+      
+      // Send message via WebSocket
+      const messageToSend = JSON.stringify({ prompt: userMessage })
+      console.log('Sending message:', messageToSend)
+      sendMessage(messageToSend)
+      setMessage('')
+      setError(null)
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setError(`Failed to send message: ${error.message}`)
+    }
+  }
 
   return (
     <SidebarProvider>
@@ -151,6 +282,7 @@ export default function App() {
       <SidebarInset>
         <div className="dark min-h-screen bg-background text-foreground">
           <div className="container flex flex-col mx-auto px-4 py-6 h-screen">
+            {/* User Login/Logout */}
             <div className="flex justify-end items-center">
           {
             isAuthenticated ? 
@@ -163,12 +295,13 @@ export default function App() {
             </Button>
           }
         </div>
+        {/* Error Message */}
         {error && (
           <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
             {error}
           </div>
         )}
-
+        {/* Clone Repository Dialog */}
         {selectedRepository && !clonedSessionId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-6 bg-card border border-border rounded-lg shadow-lg">
@@ -219,7 +352,7 @@ export default function App() {
             </div>
           </div>
         )}
-
+        {/* Repository Cloned Successfully */}
         {selectedRepository && clonedSessionId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
@@ -234,8 +367,8 @@ export default function App() {
                   variant="ghost" 
                   size="icon-xs"
                   onClick={() => {
+                    // Just hide the modal, don't reset the session
                     setSelectedRepository(null)
-                    setClonedSessionId(null)
                     setError(null)
                   }}
                 >
@@ -245,12 +378,33 @@ export default function App() {
             </div>
           </div>
         )}
-       
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto mb-4 px-8">
+          {agentResponse && (
+            <div className="flex flex-col gap-4">
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-sm font-medium mb-2">Agent Response:</div>
+                <div className="text-sm whitespace-pre-wrap">
+                  {agentResponse}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+       {/* Chat Input Area */}
         <div className="flex mt-auto mb-8 w-full max-w-2xl mx-auto pl-8">
         <InputGroup>
         <InputGroupTextarea 
           placeholder="Ask, Search or Chat..." 
           className="overflow-y-auto max-h-24"
+          value={message}
+          onChange={(e)=>setMessage(e.target.value)}
+          onKeyDown={(e)=>{
+            if(e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              onSendMessage()
+            }
+          }}
         />
         <InputGroupAddon align="block-end" className="flex justify-between items-center gap-2">
           {
@@ -293,8 +447,9 @@ export default function App() {
             variant="default"
             className="rounded-full"
             size="icon-xs"
-            disabled={!isAuthenticated}
+            disabled={!isAuthenticated || !isConnected || !message.trim()}
             onClick={()=>onSendMessage()}
+            title={`Send (Auth: ${isAuthenticated}, Connected: ${isConnected}, HasMessage: ${!!message.trim()}, ReadyState: ${readyState})`}
           >
             <ArrowUpIcon />
             <span className="sr-only">Send</span>

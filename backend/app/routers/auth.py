@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Cookie
 from fastapi.responses import RedirectResponse, JSONResponse
 from dotenv import load_dotenv
 import os
@@ -13,13 +13,17 @@ auth_router=APIRouter(prefix="/auth",tags=["auth"])
 load_dotenv()
 
 @auth_router.get("/me")
-async def get_current_user_info(current_user: UserModel = Depends(get_current_user)):
-    """Get current authenticated user info."""
+async def get_current_user_info(
+    current_user: UserModel = Depends(get_current_user),
+    token: str = Cookie(None)
+):
+    """Get current authenticated user info and token."""
     return {
         "id": current_user.id,
         "username": current_user.username,
         "avatar_url": current_user.avatar_url,
-        "github_id": current_user.github_id
+        "github_id": current_user.github_id,
+        "token": token  
     }
 
 @auth_router.get("/github")
