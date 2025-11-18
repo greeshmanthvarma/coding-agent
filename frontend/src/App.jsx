@@ -25,7 +25,7 @@ export default function App() {
   const [agentResponses, setAgentResponses] = useState([])
   const [chatHistory, setChatHistory] = useState([])
   const [cloneRepoDialogOpen, setCloneRepoDialogOpen] = useState(false)
-
+  const [currentChat, setCurrentChat] = useState(null)
   const { sendMessage, lastMessage, isConnected, readyState } = useWebsocket(clonedSessionId, token)
 
   // Debug: Log button state
@@ -149,8 +149,10 @@ export default function App() {
             setAgentResponses([])
             setAgentResponse('')
           }
-          // Add agent response to chat history
+          
+          // Add agent response to currentChat and chatHistory if there's content
           if (fullResponse) {
+            setCurrentChat(prev => prev ? [...prev, { role: 'assistant', content: fullResponse }] : [{ role: 'assistant', content: fullResponse }])
             setChatHistory(prev => [...prev, { role: 'assistant', content: fullResponse }])
           }
         } else if (data.status === 'error') {
@@ -241,6 +243,7 @@ export default function App() {
       readyState 
     })
     
+    // Validate before adding to chat
     if (!message.trim()) {
       setError('Please enter a message')
       return
@@ -259,7 +262,8 @@ export default function App() {
     try {
       const userMessage = message.trim()
       
-      // Add user message to chat history
+      // Add user message to currentChat and chatHistory (only after validation passes)
+      setCurrentChat(prev => prev ? [...prev, { role: 'user', content: userMessage }] : [{ role: 'user', content: userMessage }])
       setChatHistory(prev => [...prev, { role: 'user', content: userMessage }])
       
       // Clear previous response when sending a new message
@@ -381,28 +385,16 @@ export default function App() {
           </div>
         )}
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto mb-4 px-8">
-          {message && (
-            <div className="flex flex-col gap-4">
-              <div className="bg-muted/50 rounded-lg p-4">
-                <div className="text-sm font-medium mb-2">User Message:</div>
-                <div className="text-sm whitespace-pre-wrap">
-                  {message}
-                </div>
+        {currentChat && (
+          <div className="flex flex-col gap-2">
+            {currentChat.map((message, index) => (
+              <div key={index} className="bg-muted/50 rounded-lg p-4">
+                <div className="text-sm font-medium mb-2">{message.role.charAt(0).toUpperCase() + message.role.slice(1)}:</div>
+                <div className="text-sm whitespace-pre-wrap">{message.content}</div>
               </div>
-            </div>
-          )}
-          {agentResponse && (
-            <div className="flex flex-col gap-4">
-              <div className="bg-muted/50 rounded-lg p-4">
-                <div className="text-sm font-medium mb-2">Agent Response:</div>
-                <div className="text-sm whitespace-pre-wrap">
-                  {agentResponse}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
        {/* Chat Input Area */}
         <div className="flex mt-auto mb-8 w-full max-w-2xl mx-auto pl-8">
         <InputGroup>
@@ -439,6 +431,8 @@ export default function App() {
                 setMessage('')
                 setError(null)
                 setCloneRepoDialogOpen(false)
+                setCurrentChat(null)  // Clear chat when closing session
+                setChatHistory([])    // Clear chat history
                 // WebSocket will automatically disconnect when clonedSessionId becomes null
               }}
             >
