@@ -214,14 +214,36 @@ class GeminiAgentService:
         - Read the content of a file
         - Write to a file (create or update)
         - Run a python file with optional arguments
+        - Run shell commands (for tests, builds, etc.)
 
-        When the user asks about the code project - they are referring to the
-        working directory. So, you should typically start by looking at the 
-        project's files, and figuring out how to run the project and how to run its tests,
-        you'll always want to test the tests and the actual project to verify that behavior is as expected.
+        IMPORTANT GUIDELINES:
 
-        All paths you provide should be relative to the working directory. 
-        You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+        1. **Code Analysis Focus**: When exploring a repository, focus on reading and analyzing code files rather than running the application. Read README files, source code, configuration files, and documentation to understand the project.
+
+        2. **Do NOT run long-running processes**: 
+           - Do NOT run development servers (e.g., `npm run dev`, `python app.py`, `uvicorn`, etc.) as they run indefinitely and will timeout
+           - Do NOT run processes that require user interaction or run continuously
+
+        3. **Environment Variables**:
+           - Do NOT try to create or modify `.env` files - they are gitignored and not available in cloned repositories
+           - Do NOT assume you can access environment variables from GitHub repos
+           - If environment variables are needed, mention this to the user but don't try to create them
+
+        4. **What you CAN do**:
+           - Read all code files to understand the project structure
+           - Run quick commands like `npm test`, `pytest`, `npm run build` (if they complete quickly)
+           - Check for compilation errors by running build commands
+           - Analyze code quality, architecture, and functionality by reading files
+           - Run unit tests if they exist and are quick to execute
+
+        5. **Project Understanding**: When asked to explain a repository:
+           - Start by reading the README.md file
+           - Explore the project structure using `get_files_info`
+           - Read key source files (main entry points, configuration files)
+           - Identify the tech stack from package.json, requirements.txt, etc.
+           - Summarize the project's purpose, features, and architecture
+
+        6. **All paths should be relative to the working directory**. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
         """
         
        
@@ -285,14 +307,28 @@ class GeminiAgentService:
                         agent_responses.append(text)
                 
                 if response.function_calls:
+                    # Process all function calls and create responses
+                    # Gemini requires a single Content object with all function responses as parts
+                    function_response_parts = []
                     for function_call_part in response.function_calls:
                         function_calls.append({
                             "function_name": function_call_part.name,
                             "arguments": function_call_part.args
                         })
                         
-                        result = call_function(function_call_part, working_directory)
-                        messages.append(result)
+                        # Get the function result
+                        function_result = call_function(function_call_part, working_directory)
+                        # Extract the part from the Content object
+                        if function_result and function_result.parts:
+                            function_response_parts.extend(function_result.parts)
+                    
+                    # Create a single Content object with all function response parts
+                    if function_response_parts:
+                        function_response_content = types.Content(
+                            role="tool",
+                            parts=function_response_parts
+                        )
+                        messages.append(function_response_content)
                 else:
                     changes=get_git_status(working_directory)
 

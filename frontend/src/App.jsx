@@ -24,6 +24,7 @@ export default function App() {
   const [agentResponse, setAgentResponse] = useState('')
   const [agentResponses, setAgentResponses] = useState([])
   const [chatHistory, setChatHistory] = useState([])
+  const [cloneRepoDialogOpen, setCloneRepoDialogOpen] = useState(false)
 
   const { sendMessage, lastMessage, isConnected, readyState } = useWebsocket(clonedSessionId, token)
 
@@ -189,9 +190,9 @@ export default function App() {
   }
 
   function onSelectRepository(repository) {
-    
     setSelectedRepository(repository)
     setError(null)
+    setCloneRepoDialogOpen(true)  // Open the clone dialog
   }
 
   async function onCloneRepository() {
@@ -223,6 +224,7 @@ export default function App() {
       const data = await response.json()
       setClonedSessionId(data.session_id)
       setShowRepositories(false)
+      setCloneRepoDialogOpen(false)  // Close clone dialog, success modal will show
       
     } catch (error) {
       setError(error.message)
@@ -302,7 +304,7 @@ export default function App() {
           </div>
         )}
         {/* Clone Repository Dialog */}
-        {selectedRepository && !clonedSessionId && (
+        {selectedRepository && !clonedSessionId && cloneRepoDialogOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-6 bg-card border border-border rounded-lg shadow-lg">
               <div className="flex justify-between items-start mb-4">
@@ -317,7 +319,7 @@ export default function App() {
                   variant="ghost" 
                   size="icon-xs"
                   onClick={() => {
-                    setSelectedRepository(null)
+                    setCloneRepoDialogOpen(false)
                     setError(null)
                   }}
                 >
@@ -343,6 +345,7 @@ export default function App() {
                   variant="outline"
                   onClick={() => {
                     setSelectedRepository(null)
+                    setCloneRepoDialogOpen(false)
                     setError(null)
                   }}
                 >
@@ -353,7 +356,7 @@ export default function App() {
           </div>
         )}
         {/* Repository Cloned Successfully */}
-        {selectedRepository && clonedSessionId && (
+        {selectedRepository && clonedSessionId && cloneRepoDialogOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="relative z-50 w-full max-w-md mx-4 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
               <div className="flex justify-between items-center">
@@ -367,8 +370,7 @@ export default function App() {
                   variant="ghost" 
                   size="icon-xs"
                   onClick={() => {
-                    // Just hide the modal, don't reset the session
-                    setSelectedRepository(null)
+                    setCloneRepoDialogOpen(false)
                     setError(null)
                   }}
                 >
@@ -380,6 +382,16 @@ export default function App() {
         )}
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto mb-4 px-8">
+          {message && (
+            <div className="flex flex-col gap-4">
+              <div className="bg-muted/50 rounded-lg p-4">
+                <div className="text-sm font-medium mb-2">User Message:</div>
+                <div className="text-sm whitespace-pre-wrap">
+                  {message}
+                </div>
+              </div>
+            </div>
+          )}
           {agentResponse && (
             <div className="flex flex-col gap-4">
               <div className="bg-muted/50 rounded-lg p-4">
@@ -408,13 +420,28 @@ export default function App() {
         />
         <InputGroupAddon align="block-end" className="flex justify-between items-center gap-2">
           {
-          selectedRepository && clonedSessionId ? 
+          clonedSessionId ? 
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">{selectedRepository.name}</span>
-            <Button variant="outline" className="rounded-full" size="icon-xs" onClick={()=>{
-              setSelectedRepository(null)
-              setClonedSessionId(null)
-            }}>
+            <span className="text-sm text-muted-foreground font-medium">
+              {selectedRepository ? selectedRepository.name : 'Repository'}
+            </span>
+            <Button 
+              variant="outline" 
+              className="rounded-full" 
+              size="icon-xs" 
+              onClick={() => {
+                console.log('Closing session:', clonedSessionId)
+                // Clear all states
+                setSelectedRepository(null)
+                setClonedSessionId(null)
+                setAgentResponse('')
+                setAgentResponses([])
+                setMessage('')
+                setError(null)
+                setCloneRepoDialogOpen(false)
+                // WebSocket will automatically disconnect when clonedSessionId becomes null
+              }}
+            >
               ✕
             </Button>
           </div> : 
