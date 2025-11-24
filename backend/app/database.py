@@ -13,7 +13,7 @@ load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-from app.models import User, Session, Message, Review
+from app.models import User, Session as SessionModel, Message as MessageModel, Review as ReviewModel
 Base.metadata.create_all(bind=engine)
 def get_db():
     db = SessionLocal()

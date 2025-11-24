@@ -8,6 +8,7 @@ import { useState, useEffect } from "react"
 import { SidebarComponent } from "./components/sidebarComponent"
 import { SidebarProvider, SidebarInset } from "./components/ui/sidebar"
 import { useWebsocket } from "./hooks/useWebsocket"
+import ReviewComponent from "./components/reviewComponent"
 
 export default function App() {
 
@@ -26,6 +27,9 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([])
   const [cloneRepoDialogOpen, setCloneRepoDialogOpen] = useState(false)
   const [currentChat, setCurrentChat] = useState(null)
+  const [pendingReview, setPendingReview] = useState(false)
+  const [review, setReview] = useState(null)
+  const [reviewToggle, setReviewToggle] = useState(false)
   const { sendMessage, lastMessage, isConnected, readyState } = useWebsocket(clonedSessionId, token)
 
   // Debug: Log button state
@@ -154,6 +158,21 @@ export default function App() {
           if (fullResponse) {
             setCurrentChat(prev => prev ? [...prev, { role: 'assistant', content: fullResponse }] : [{ role: 'assistant', content: fullResponse }])
             setChatHistory(prev => [...prev, { role: 'assistant', content: fullResponse }])
+          }
+          if(data.review_id) {
+            async function fetchReview() {
+              const reviewResponse = await fetch(`/api/agent/review/${data.review_id}`)
+              const reviewData = await reviewResponse.json()
+              const hasChanges = reviewData.changes && reviewData.changes.modified?.length > 0 || 
+                reviewData.changes.added?.length > 0 || 
+                reviewData.changes.deleted?.length > 0
+              
+              if(hasChanges) {
+                setPendingReview(true)
+                setReview(reviewData)
+              }
+            }
+            fetchReview()
           }
         } else if (data.status === 'error') {
           // Agent error
@@ -288,7 +307,12 @@ export default function App() {
       <SidebarInset>
         <div className="dark min-h-screen bg-background text-foreground">
           <div className="container flex flex-col mx-auto px-4 py-6 h-screen">
-            {/* User Login/Logout */}
+           
+            <div className="flex justify-start gap-2 items-center">
+              <div> Chat</div>
+              <button disabled={!pendingReview} onClick={()=>{setPendingReview(false); setReviewToggle(true)}}> Review</button>
+            </div>
+             {/* User Login/Logout */}
             <div className="flex justify-end items-center">
           {
             isAuthenticated ? 
@@ -385,14 +409,19 @@ export default function App() {
           </div>
         )}
         {/* Chat Area */}
-        {currentChat && (
-          <div className="flex flex-col gap-2">
+        {currentChat && !reviewToggle && (
+          <div className="flex flex-col gap-2 max-h-96 overflow-y-auto mt-4">
             {currentChat.map((message, index) => (
-              <div key={index} className="bg-muted/50 rounded-lg p-4">
-                <div className="text-sm font-medium mb-2">{message.role.charAt(0).toUpperCase() + message.role.slice(1)}:</div>
+              <div key={index} className={`bg-muted/50 rounded-lg p-4 ${message.role === 'user' ? 'bg-primary/10 justify-end' : 'bg-muted/50 justify-start'}`}>
+                <div className={`text-sm font-medium mb-2 `}>{message.role.charAt(0).toUpperCase() + message.role.slice(1)}:</div>
                 <div className="text-sm whitespace-pre-wrap">{message.content}</div>
               </div>
             ))}
+          </div>
+        )}
+        {reviewToggle && (
+          <div className="flex flex-col gap-2 max-h-96 overflow-y-auto mt-4">
+            <ReviewComponent reviewId={review.id} />
           </div>
         )}
        {/* Chat Input Area */}

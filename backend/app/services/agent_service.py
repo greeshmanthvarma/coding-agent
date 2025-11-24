@@ -308,7 +308,6 @@ class GeminiAgentService:
                 
                 if response.function_calls:
                     # Process all function calls and create responses
-                    # Gemini requires a single Content object with all function responses as parts
                     function_response_parts = []
                     for function_call_part in response.function_calls:
                         function_calls.append({
